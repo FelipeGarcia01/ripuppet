@@ -44,6 +44,13 @@ if(inputValuesFlag === true){
 console.log(ids);
 console.log(inputValues);
 
+function sleep(milliseconds) {
+  const date = Date.now();
+  let currentDate = null;
+  do {
+    currentDate = Date.now();
+  } while (currentDate - date < milliseconds);
+}
 
   //Main execution
   (async () => {
@@ -64,12 +71,13 @@ console.log(inputValues);
       const browser = await playwright[b].launch({headless: headlessFlag, viewport: {width:viewportWidth, height:viewportHeight}});
       const context = await browser.newContext();
       const page = await context.newPage();
-
+      
       //Make sure errors and console events are catched
       await addListeners(page);
       
       if (!fs.existsSync(screenshots_directory)){
         fs.mkdirSync(screenshots_directory, { recursive: true });
+        fs.mkdirSync(screenshots_directory+'Error', { recursive: true });
       }
       else{
         clean(screenshots_directory)
@@ -108,13 +116,13 @@ console.log(inputValues);
 
 //Get all anchors <a>
 async function scrapLinks(page){
+  sleep(5000)
   const stories = await page.evaluate(() => {
     const anchors = Array.from(document.querySelectorAll('a'));
     const links = anchors.map(anchor => anchor.href);
     const webLinks = links.filter(link => link.toString().includes('http'));
     return uniqueLinks = [...new Set(webLinks)];
     });
-  
   return stories;
 }
 
@@ -136,6 +144,7 @@ async function recursiveExploration(page, link, depth, parentState){
     console.log(err); 
     return; 
   });
+  sleep(5000)
   let html = await getDOM(page);
   let parsedHtml = parser.parse(html);
   let body = parsedHtml.querySelector('body');
@@ -175,36 +184,39 @@ async function recursiveExploration(page, link, depth, parentState){
     //Explore the current page
     console.log('Visiting: ' + link);
     console.log('Children pages: ');
-    const links = await scrapLinks(page);
-    console.log(links);
+    try {
+      const links = await scrapLinks(page);
+      console.log(links);
+      visitedPages.set(link, {
+        url: link,
+        children: links, 
+      });
+      
+      if(link.includes(baseUrl)){ //Only explore pages of the specified domain
+        let elementList = []; 
+        //Fill the element list with DOM elements that provide interactions
+        await getTextInputs(page, elementList);
+        await getButtons(page, elementList);
+        await getDropdowns(page, elementList);
+        //Interact with the elements
+        await interactWithObjects(elementList, page , currentState, link);
 
-    visitedPages.set(link, {
-      url: link,
-      children: links, 
-    });
-    
-    if(link.includes(baseUrl)){ //Only explore pages of the specified domain
-      let elementList = []; 
-      //Fill the element list with DOM elements that provide interactions
-      await getTextInputs(page, elementList);
-      await getButtons(page, elementList);
-      await getDropdowns(page, elementList);
-      //Interact with the elements
-      await interactWithObjects(elementList, page , currentState, link);
+        //Taking screenshot of the current URL
+        let imagePath = screenshots_directory + '/' + currentState + '.png';
+        await page.screenshot({path: imagePath,fullPage: true});
 
-      //Taking screenshot of the current URL
-      let imagePath = screenshots_directory + '/' + currentState + '.png';
-      await page.screenshot({path: imagePath,fullPage: true});
-
-      //Continue with the ripping process
-      for(const newLink of links){
-        await recursiveExploration(page, newLink, depth+1, currentState);
+        //Continue with the ripping process
+        for(const newLink of links){
+          await recursiveExploration(page, newLink, depth+1, currentState);
+        }
       }
-    }
-    else{ //External pages are not explored
-      //Taking screenshot
-      let imagePath = screenshots_directory + '/' + currentState + '.png';
-      await page.screenshot({path: imagePath, fullPage: true});
+      else{ //External pages are not explored
+        //Taking screenshot
+        let imagePath = screenshots_directory + '/' + currentState + '.png';
+        await page.screenshot({path: imagePath, fullPage: true});
+      }
+    } catch (error) {
+      console.log("Error.....");
     }
   }
 }
@@ -374,7 +386,7 @@ async function getButtons(page, elementList){
   let buttons = await page.$$('button');
   let button;
   for (let i = 0; i < buttons.length ; i++ ){
-    let disabled = page.evaluate((btn)=>{
+    let disabled = await page.evaluate((btn)=>{
       return typeof btn.getAttribute("disabled") === "string" || btn.getAttribute("aria-disabled") === "true";
     }, buttons[i]);
     if(!disabled){
