@@ -116,7 +116,6 @@ function sleep(milliseconds) {
 
 //Get all anchors <a>
 async function scrapLinks(page){
-  sleep(5000)
   const stories = await page.evaluate(() => {
     const anchors = Array.from(document.querySelectorAll('a'));
     const links = anchors.map(anchor => anchor.href);
@@ -144,7 +143,7 @@ async function recursiveExploration(page, link, depth, parentState){
     console.log(err); 
     return; 
   });
-  sleep(5000)
+  sleep(2000)
   let html = await getDOM(page);
   let parsedHtml = parser.parse(html);
   let body = parsedHtml.querySelector('body');
